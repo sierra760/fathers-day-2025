@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+     * HAPPY FATHER'S DAY, DAD!
+     *
+     * I thought I'd whip up this fun interactive quaternion Julia set in celebration of
+     * Father's Day 2025.  Why this exact memory stuck with me, I am not sure -- but I
+     * remember that right after setting up our very first home computer when I was young,
+     * the first thing you did with it was generate a couple of fractal images and
+     * print them in color at the university.  In celebration of this and how much I
+     * genuinely delight the extent to which we connect over our obsessions, here you go!
+     * So thankful for you, and sending you lots of love today and always.
+     * 
+     * This interactive fractal visualization combines several fun concepts:
+     * 
+     * CORE MATHEMATICS:
+     * 1. Quaternion Julia Set - projected to 2D
+     *    - Formula: z = z² + c (in quaternion space)
+     *    - Distance estimation for smooth rendering
+     *    - Dynamic 'c' parameter creates evolving patterns
+     * 
+     * 2. Color Palettes - Cosine-based gradient functions
+     *    - Formula: 0.5 + 0.5 * cos(2π * (base + t + phase))
+     *    - 10 different palettes using various base colors and phases
+     * 
+     * 3. Lissajous Curves - Parametric curves from perpendicular oscillations
+     *    - x = sin(a*t + π/2), y = sin(b*t)
+     *    - Creates complex looping patterns based on frequency ratios
+     * 
+     * 4. Voronoi Tessellation - Cellular patterns based on distance to random points
+     *    - Divides space into regions based on nearest seed points
+     *    - Creates organic, cell-like structures
+     * 
+     * 5. Kaleidoscope Effect - Radial symmetry through angular reflection
+     *    - Maps angles to repeated segments
+     *    - Creates mandala-like patterns
+     * 
+     * PARAMETERS TO EXPLORE:
+     * - Julia set 'c' values: Control fractal shape (lines 164-176)
+     * - Color palette frequencies: Adjust color cycling (lines 71-119)
+     * - Lissajous ratios: Change curve patterns (line 586-588)
+     * - Zoom and rotation speeds: Alter animation dynamics
+     * - Time warp multiplier: Speed up/slow down evolution
+     * 
+     * KEYBOARD CONTROLS:
+     *  0-9: Switch color palettes
+     *  D: Toggle "Dad mode"
+     *  F: Fireworks effect
+     *  J: Julia parameter oscillation
+     *  S: GOAT MODE
+     *  P: Phase coloring
+     *  L: Lissajous curve overlay
+     *  V: Voronoi tessellation overlay
+     *  Z: Zoom pulse effect
+     *  M: Mirror/kaleidoscope mode
+     *  T: Time warp
+     *  I: Show/hide instructions
+     *  Click: Random palette
+-->
+<head>
+  <meta charset="UTF-8">
+  <title>Happy Father's Day, Dad!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=BioRhyme+Expanded:wght@800&family=BioRhyme:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    #glcanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%,-50%);
+      font-family: 'BioRhyme Expanded', serif;
+      font-size: 8vw;
+      text-align: center;
+      font-weight: 800;
+      color: white;
+      mix-blend-mode: difference;
+      pointer-events: none;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+  <div class="overlay">HAPPY FATHER'S DAY, DAD!</div>
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  
+  <!-- Vertex Shader -->
+  <script id="vertexShader" type="x-shader/x-vertex">
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position, 1.0);
+    }
+  </script>
+
+  <!-- Fragment Shader -->
+  <!-- This shader implements the mathematical heart of the visualization -->
+  <script id="fragmentShader" type="x-shader/x-fragment">
+    precision highp float;
+    uniform float uTime;
+    uniform vec2 uResolution;
+    uniform vec2 uMouse;
+    uniform int uPalette;
+    uniform float uMirror;
+    uniform float uTimeWarp;
+    uniform float uZoomPulse;
+    uniform float uJuliaMode;
+    uniform float uPhaseColor;
+    uniform float uLissajous;
+    uniform float uVoronoi;
+    varying vec2 vUv;
+
+    // ==========================================
+    // COLOR PALETTE FUNCTIONS
+    // Using cosine-based gradients for smooth color transitions
+    // Formula: 0.5 + 0.5 * cos(2π * (base_color + t + phase))
+    // ==========================================
+    
+    // Palette 0: Original ocean/sky palette
+    vec3 palette0(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.0,0.33,0.67) + t + vec3(0.0,0.2,0.4)));
+    }
+
+    // Palette 1: Sunset/fire palette
+    vec3 palette1(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(1.0,0.5,0.0) + t + vec3(0.3,0.2,0.1)));
+    }
+
+    // Palette 2: Forest/nature palette
+    vec3 palette2(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.2,0.6,0.3) + t + vec3(0.1,0.4,0.2)));
+    }
+
+    // Palette 3: Purple/magenta palette
+    vec3 palette3(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.8,0.3,0.8) + t + vec3(0.4,0.1,0.3)));
+    }
+
+    // Palette 4: Gold/bronze palette
+    vec3 palette4(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.9,0.7,0.3) + t + vec3(0.3,0.2,0.1)));
+    }
+
+    // Palette 5: Arctic/ice palette
+    vec3 palette5(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.7,0.9,1.0) + t + vec3(0.1,0.2,0.3)));
+    }
+
+    // Palette 6: Rainbow palette
+    vec3 palette6(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.0,0.4,0.8) + t * 2.0));
+    }
+
+    // Palette 7: Monochrome/grayscale
+    vec3 palette7(float t) {
+      float v = 0.5 + 0.5 * cos(6.28318 * t);
+      return vec3(v);
+    }
+
+    // Palette 8: Neon/electric palette
+    vec3 palette8(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.0,1.0,0.5) + t + vec3(0.5,0.0,0.8)));
+    }
+
+    // Palette 9: Autumn/harvest palette
+    vec3 palette9(float t) {
+      return 0.5 + 0.5 * cos(6.28318 * (vec3(0.9,0.4,0.1) + t + vec3(0.2,0.3,0.1)));
+    }
+
+    // Master palette selector
+    // Switches between 10 different mathematical color schemes
+    vec3 palette(float t) {
+      if (uPalette == 0) return palette0(t);
+      else if (uPalette == 1) return palette1(t);
+      else if (uPalette == 2) return palette2(t);
+      else if (uPalette == 3) return palette3(t);
+      else if (uPalette == 4) return palette4(t);
+      else if (uPalette == 5) return palette5(t);
+      else if (uPalette == 6) return palette6(t);
+      else if (uPalette == 7) return palette7(t);
+      else if (uPalette == 8) return palette8(t);
+      else if (uPalette == 9) return palette9(t);
+      else return palette0(t);
+    }
+    
+    // ==========================================
+    // LISSAJOUS CURVES
+    // Parametric curves from perpendicular harmonic oscillations
+    // x = sin(a*t + π/2), y = sin(b*t)
+    // Creates figure-8 and other complex patterns based on a:b ratio
+    // ==========================================
+    vec2 lissajous(float t, float a, float b) {
+      return vec2(sin(a * t + 1.57), sin(b * t));
+    }
+    
+    // ==========================================
+    // VORONOI TESSELLATION
+    // Divides space into cells based on distance to seed points
+    // Each cell contains all points closer to its seed than any other
+    // ==========================================
+    float voronoi(vec2 p) {
+      vec2 n = floor(p);
+      vec2 f = fract(p);
+      float d = 1.0;
+      for(int i = -1; i <= 1; i++) {
+        for(int j = -1; j <= 1; j++) {
+          vec2 g = vec2(float(i), float(j));
+          vec2 o = vec2(
+            sin(dot(n + g, vec2(12.9898, 78.233))) * 0.5 + 0.5,
+            cos(dot(n + g, vec2(45.164, 94.375))) * 0.5 + 0.5
+          );
+          d = min(d, distance(f, g + o));
+        }
+      }
+      return d;
+    }
+
+
+    // ==========================================
+    // QUATERNION JULIA SET FRACTAL
+    // Core mathematical engine of the visualization
+    // 
+    // Mathematics:
+    // - Quaternions extend complex numbers to 4D: q = w + xi + yj + zk
+    // - Julia set iteration: z_{n+1} = z_n² + c
+    // - Distance estimation for smooth rendering
+    // - Escape radius determines fractal boundary
+    // 
+    // The 'c' parameter controls the fractal's shape
+    // Time-varying 'c' creates the animated evolution
+    // ==========================================
+    float quaternionJulia(vec2 pos) {
+      vec4 z = vec4(pos, 0.0, 0.0);
+      // c constant wiggles slowly over time
+      vec4 c = vec4(0.36, 0.36, 0.0, 0.0) 
+             + 0.2 * sin(uTime * 0.15 + vec4(1.3,2.1,3.7,4.2));
+      
+      // Julia mode: oscillate c parameters more dramatically
+      if (uJuliaMode > 0.0) {
+        float t = uTime * 0.5;
+        c = vec4(
+          0.4 * cos(t * 1.1) * sin(t * 0.7),
+          0.4 * sin(t * 1.3) * cos(t * 0.5),
+          0.3 * sin(t * 0.9),
+          0.3 * cos(t * 1.7)
+        );
+      }
+      float dr = 1.0;
+      float r  = 0.0;
+      const int MAX_IT = 20;
+      int i;
+      for(i=0; i<MAX_IT; i++) {
+        // z = z^2 + c  (quaternion square)
+        float x = z.x, y = z.y, z2 = z.z, w = z.w;
+        vec4 z2q;
+        z2q.x = x*x - y*y - z2*z2 - w*w;
+        z2q.y = 2.0*x*y;
+        z2q.z = 2.0*x*z2;
+        z2q.w = 2.0*x*w;
+        dr = 2.0 * length(z) * dr;
+        z = z2q + c;
+        r = length(z);
+        if(r > 4.0) break;
+      }
+      // continuous coloring
+      float dist = 0.5 * log(r) * r / dr;
+      return float(i) - dist;
+    }
+
+    void main() {
+      // normalize coordinates to [-1, 1] range
+      vec2 uv = vUv * 2.0 - 1.0;
+      uv.x *= uResolution.x / uResolution.y;
+      
+      // ==========================================
+      // KALEIDOSCOPE TRANSFORMATION
+      // Creates radial symmetry by reflecting angles
+      // ==========================================
+      // Apply mirror/kaleidoscope effect
+      if (uMirror > 0.0) {
+        float segments = 6.0;
+        float angle = atan(uv.y, uv.x);
+        float radius = length(uv);
+        angle = mod(angle, 6.28318 / segments);
+        if (mod(floor(atan(uv.y, uv.x) / (6.28318 / segments)), 2.0) == 1.0) {
+          angle = 6.28318 / segments - angle;
+        }
+        uv = vec2(cos(angle), sin(angle)) * radius;
+      }
+
+      // Time warp effect - allows speed control of all animations
+      float timeMultiplier = 1.0 + uTimeWarp * 4.0;
+      float warperTime = uTime * timeMultiplier;
+
+      // Continuous rotation transformation
+      // Creates spiral motion in the fractal
+      float ang = warperTime * 0.07;
+      float s = sin(ang), c = cos(ang);
+      uv = mat2(c, -s, s, c) * uv;
+
+      // Zoom dynamics - creates breathing/pulsing effect
+      // Base zoom oscillates slowly, pulse adds rapid variation
+      float zoomBase = 1.8 + 0.4 * sin(warperTime * 0.3);
+      float zoomPulse = 1.0 + uZoomPulse * 0.5 * sin(warperTime * 5.0);
+      float zoom = zoomBase * zoomPulse;
+      vec2 z = uv * zoom;
+
+      // interactive shift by mouse
+      vec2 m = (uMouse / uResolution - 0.5) * 2.0;
+      z += 0.3 * m;
+
+      // ==========================================
+      // FRACTAL CALCULATION AND COLORING
+      // ==========================================
+      
+      // compute fractal iteration count/distance
+      float f = quaternionJulia(z);
+
+      // Map fractal value to color palette
+      vec3 col = palette(0.2 + f * 0.04 + 0.5 * sin(warperTime * 0.2));
+      
+      // ==========================================
+      // PHASE COLORING
+      // Visualizes complex argument (angle) of points
+      // Common technique in complex analysis
+      // ==========================================
+      if (uPhaseColor > 0.0) {
+        float phase = atan(z.y, z.x) / 6.28318 + 0.5;
+        vec3 phaseCol = vec3(
+          sin(phase * 6.28318),
+          sin(phase * 6.28318 + 2.094),
+          sin(phase * 6.28318 + 4.189)
+        ) * 0.5 + 0.5;
+        col = mix(col, phaseCol * (1.0 + f * 0.1), uPhaseColor);
+      }
+      
+      // ==========================================
+      // LISSAJOUS CURVE OVERLAY
+      // Adds animated parametric curves
+      // ==========================================
+      if (uLissajous > 0.0) {
+        vec3 lissCol = vec3(0.0);
+        for(float i = 0.0; i < 5.0; i++) {
+          vec2 liss = lissajous(warperTime * 2.0 + i * 0.5, 3.0 + i, 2.0 + i * 0.7);
+          float d = length(uv - liss * 0.8);
+          lissCol += vec3(0.0, 0.5, 1.0) * smoothstep(0.05, 0.0, d) * (1.0 - i * 0.15);
+        }
+        col = mix(col, col + lissCol, uLissajous);
+      }
+      
+      // ==========================================
+      // VORONOI TESSELLATION OVERLAY
+      // Adds cellular structure to the fractal
+      // ==========================================
+      if (uVoronoi > 0.0) {
+        float v = voronoi(uv * 5.0 + warperTime * 0.2);
+        vec3 vorCol = vec3(v) * vec3(1.0, 0.8, 0.6);
+        col = mix(col, col * vorCol, uVoronoi * 0.5);
+      }
+      
+      gl_FragColor = vec4(col, 1.0);
+    }
+  </script>
+
+  <script>
+    // ==========================================
+    // THREE.JS SETUP
+    // ==========================================
+    
+    // grab canvas and set up renderer
+    const canvas = document.getElementById('glcanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+
+    // orthographic camera for a 2D full-screen quad
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const scene = new THREE.Scene();
+
+    // ==========================================
+    // SHADER UNIFORMS - Mathematical Parameters
+    // ==========================================
+    
+    // full-screen quad
+    const geometry = new THREE.PlaneBufferGeometry(2, 2);
+    const uniforms = {
+      uTime:       { value: 0.0 },
+      uResolution: { value: new THREE.Vector2() },
+      uMouse:      { value: new THREE.Vector2() },
+      uPalette:    { value: 0 },
+      uMirror:     { value: 0.0 },
+      uTimeWarp:   { value: 0.0 },
+      uZoomPulse:  { value: 0.0 },
+      uJuliaMode:  { value: 0.0 },
+      uPhaseColor: { value: 0.0 },
+      uLissajous:  { value: 0.0 },
+      uVoronoi:    { value: 0.0 }
+    };
+    const material = new THREE.ShaderMaterial({
+      vertexShader:   document.getElementById('vertexShader').textContent,
+      fragmentShader: document.getElementById('fragmentShader').textContent,
+      uniforms
+    });
+    const quad = new THREE.Mesh(geometry, material);
+    scene.add(quad);
+
+    // ==========================================
+    // WINDOW EVENT HANDLERS
+    // ==========================================
+    
+    // resize handling
+    function onResize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      renderer.setSize(w, h);
+      uniforms.uResolution.value.set(w, h);
+      
+    }
+    window.addEventListener('resize', onResize);
+    onResize();
+
+    // track mouse (invert Y for shader coords)
+    // This allows the fractal to respond to mouse movement
+    window.addEventListener('mousemove', e => {
+      uniforms.uMouse.value.set(e.clientX, window.innerHeight - e.clientY);
+    });
+    
+    // Click for random color palette
+    // Randomly selects from 10 mathematically-defined color gradients
+    window.addEventListener('click', e => {
+      // Don't change palette if clicking on instructions or other overlays
+      if (e.target.closest('.instructions') || 
+          e.target.closest('.effect-notification') || 
+          e.target.closest('.goat-message') || 
+          e.target.closest('.palette-notification')) {
+        return;
+      }
+      
+      const randomPalette = Math.floor(Math.random() * 10);
+      uniforms.uPalette.value = randomPalette;
+      showPaletteNotification(randomPalette.toString());
+    });
+
+    // ==========================================
+    // STATE MANAGEMENT
+    // ==========================================
+    
+    let activeEffects = new Set();
+    let dadModeState = 'on'; // 'on', 'off', 'turbo'
+    let turboInterval;
+    
+    // ==========================================
+    // KEYBOARD CONTROLS - Interactive Features
+    // ==========================================
+    
+    // keyboard controls
+    window.addEventListener('keydown', e => {
+      const key = e.key.toLowerCase();
+      
+      // Number keys for palette switching
+      if (key >= '0' && key <= '9') {
+        uniforms.uPalette.value = parseInt(key);
+        showPaletteNotification(key);
+        return;
+      }
+      
+      switch(key) {
+        case 'd':
+          // Dad mode with cycling settings
+          cycleDadMode();
+          break;
+          
+        case 'f':
+          // Fireworks effect
+          triggerFireworks();
+          break;
+          
+        case 'z':
+          // Zoom pulse toggle
+          toggleEffect('zoom', 'uZoomPulse', 'Zoom Pulse');
+          break;
+          
+        case 'm':
+          // Mirror/kaleidoscope toggle
+          toggleEffect('mirror', 'uMirror', 'Kaleidoscope');
+          break;
+          
+        case 't':
+          // Time warp toggle
+          toggleEffect('timewarp', 'uTimeWarp', 'Time Warp');
+          break;
+          
+        case 'j':
+          // Julia set parameter oscillation
+          toggleEffect('julia', 'uJuliaMode', 'Julia Oscillation');
+          break;
+          
+        case 's':
+          // GOAT MODE
+          triggerGoatMode();
+          break;
+          
+        case 'p':
+          // Phase coloring mode
+          toggleEffect('phase', 'uPhaseColor', 'Phase Coloring');
+          break;
+          
+        case 'l':
+          // Lissajous curves
+          toggleEffect('lissajous', 'uLissajous', 'Lissajous Curves');
+          break;
+          
+        case 'v':
+          // Voronoi tessellation
+          toggleEffect('voronoi', 'uVoronoi', 'Voronoi Tessellation');
+          break;
+          
+        case 'i':
+          // Instructions overlay
+          toggleInstructions();
+          break;
+      }
+    });
+    
+    // ==========================================
+    // EFFECT IMPLEMENTATIONS
+    // ==========================================
+    
+    // Dad Mode cycling function
+    function cycleDadMode() {
+      const overlay = document.querySelector('.overlay');
+      
+      // Clear any existing turbo animation
+      if (turboInterval) {
+        clearInterval(turboInterval);
+        turboInterval = null;
+        overlay.style.transform = 'translate(-50%, -50%)';
+      }
+      
+      // Cycle through states
+      if (dadModeState === 'on') {
+        dadModeState = 'off';
+        overlay.style.display = 'none';
+        showNotification('Dad Mode: OFF');
+      } else if (dadModeState === 'off') {
+        dadModeState = 'turbo';
+        overlay.style.display = 'block';
+        showNotification('Dad Mode: TURBO! 🚀');
+        
+        // Start turbo animation with smooth sine wave
+        let startTime = Date.now();
+        turboInterval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) * 0.001; // Convert to seconds
+          const scale = 1.0 + 0.3 * Math.sin(elapsed * 2.0); // Oscillates between 0.7 and 1.3
+          overlay.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }, 16); // ~60fps for smoother animation
+      } else { // turbo -> on
+        dadModeState = 'on';
+        overlay.style.display = 'block';
+        overlay.style.transform = 'translate(-50%, -50%)';
+        showNotification('Dad Mode: ON');
+      }
+    }
+    
+    // Toggle effect helper
+    function toggleEffect(name, uniform, displayName) {
+      if (activeEffects.has(name)) {
+        activeEffects.delete(name);
+        uniforms[uniform].value = 0.0;
+        showNotification(`${displayName} OFF`);
+      } else {
+        activeEffects.add(name);
+        uniforms[uniform].value = 1.0;
+        showNotification(`${displayName} ON`);
+      }
+    }
+    
+    // ==========================================
+    // GOAT MODE - Mathematical Animation
+    // Uses Lissajous curves for smooth, looping paths
+    // ==========================================
+    
+    // GOAT MODE - Optimized emoji goats following Lissajous curves
+    let goatAnimationId;
+    let goatMessageInterval;
+    const flyingGoats = [];
+    const goatEmojis = ['🐐', '🐑', '🐏'];
+    const goatMessages = [
+      'You\'ve goat to be kidding me!',
+      'Whatever floats your goat',
+      'Feeling quite bleat today',
+      'I\'m having a baaaad hair day',
+      'Stop trying to get my goat',
+      'That\'s what I herd',
+      'No ifs, ands, or butts about it',
+      'I\'m the G.O.A.T. - Grumpiest Of All Time',
+      'Just trying to live in the mo-goat',
+      'Goat any grapes?',
+      'I\'m not kidding around',
+      'Goat milk? More like GREAT milk!',
+      'Ain\'t no mountain high enough... to stop me',
+      'I\'m feeling a little sheepish... wait, wrong animal',
+      'You can\'t pull the wool over my eyes',
+      'Time to hoof it outta here',
+      'That really gets my goat going',
+      'I\'m totally un-bleat-able',
+      'Living life on the ledge',
+      'Don\'t have a cow... have a goat!',
+      'I\'m pasture prime but still got it',
+      'Goat to go fast!',
+      'Billy want a cracker?',
+      'I\'m not just another pretty goatee',
+      'Kids these days...',
+      'You\'ve goat mail!',
+      'Goat your tongue?',
+      'I\'m the scapegoat around here',
+      'That\'s a goat-astrophe waiting to happen',
+      'I\'m goat-ally awesome',
+      'Don\'t kid yourself',
+      'I\'m having a goat time',
+      'Goat to admit, that\'s pretty good',
+      'I\'m not trying to ram it down your throat',
+      'That\'s the way the goat crumbles',
+      'You\'ve goat a friend in me',
+      'I\'m goat-ing places',
+      'Goat any better ideas?',
+      'I\'m the greatest of all time... literally',
+      'Stop being such a silly billy',
+      'I\'m feeling vine, thanks for asking',
+      'Goat a problem with that?',
+      'I\'m not just blowing my own horn',
+      'That\'s what cheese said',
+      'I\'m goat-ing to make it after all',
+      'You butter believe it',
+      'I\'m kid-ding myself if I think I can fly',
+      'Goat to hand it to you',
+      'I\'m just a kid at heart',
+      'That\'s my goat-to joke'
+    ];
+    
+    function triggerGoatMode() {
+      if (activeEffects.has('goat')) {
+        // Turn off GOAT MODE
+        activeEffects.delete('goat');
+        
+        // Cancel animation and remove all goats
+        if (goatAnimationId) {
+          cancelAnimationFrame(goatAnimationId);
+          goatAnimationId = null;
+        }
+        
+        // Clear message interval
+        if (goatMessageInterval) {
+          clearInterval(goatMessageInterval);
+          goatMessageInterval = null;
+        }
+        
+        flyingGoats.forEach(goat => goat.element.remove());
+        flyingGoats.length = 0;
+        
+        showNotification('Goats are out to pasture!');
+      } else {
+        // ACTIVATE GOAT MODE!
+        activeEffects.add('goat');
+        
+        showNotification('🐐 GOATS INCOMING! 🐐');
+        
+        // Create flying goats with optimized styles
+        const numGoats = 24;
+        
+        // Create a style element for better performance
+        if (!document.querySelector('#goat-styles')) {
+          const style = document.createElement('style');
+          style.id = 'goat-styles';
+          style.textContent = `
+            .flying-goat {
+              position: fixed;
+              left: 0;
+              top: 0;
+              font-size: 48px;
+              z-index: 9999;
+              user-select: none;
+              pointer-events: none;
+              will-change: transform;
+              line-height: 1;
+              display: block;
+              width: 48px;
+              height: 48px;
+              text-align: center;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+        
+        for (let i = 0; i < numGoats; i++) {
+          const goat = document.createElement('div');
+          goat.className = 'flying-goat';
+          goat.textContent = goatEmojis[i % goatEmojis.length];
+          
+          // Don't set initial position - let the animation handle it
+          document.body.appendChild(goat);
+          
+          flyingGoats.push({
+            element: goat,
+            startTime: performance.now(),
+            a: 3 + i * 0.4, // Lissajous frequency a - controls horizontal oscillation
+            b: 2 + i * 0.25, // Lissajous frequency b - controls vertical oscillation
+            phase: i * 0.5, // Phase offset - creates variety in starting positions
+            speed: 0.0001 + i * 0.00002 // Animation speed - varies per goat
+          });
+        }
+        
+        // Optimized animation using requestAnimationFrame
+        function animateGoats(currentTime) {
+          if (!activeEffects.has('goat')) return;
+          
+          flyingGoats.forEach((goat, index) => {
+            const elapsed = (currentTime - goat.startTime) * goat.speed;
+            const t = elapsed + goat.phase;
+            
+            // Lissajous curve calculation
+            // x = A * sin(a*t + δ) + x₀
+            // y = B * sin(b*t) + y₀
+            const x = Math.sin(goat.a * t) * window.innerWidth * 0.4 + window.innerWidth * 0.5;
+            const y = Math.sin(goat.b * t) * window.innerHeight * 0.4 + window.innerHeight * 0.5;
+            
+            // Calculate rotation based on movement direction
+            const prevT = t - 0.1;
+            const prevX = Math.sin(goat.a * prevT) * window.innerWidth * 0.4 + window.innerWidth * 0.5;
+            const prevY = Math.sin(goat.b * prevT) * window.innerHeight * 0.4 + window.innerHeight * 0.5;
+            const angle = Math.atan2(y - prevY, x - prevX) * 180 / Math.PI;
+            
+            // Use translate3d for GPU acceleration, offset by half size
+            goat.element.style.transform = `translate3d(${x - 32}px, ${y - 32}px, 0) rotate(${angle}deg)`;
+          });
+          
+          goatAnimationId = requestAnimationFrame(animateGoats);
+        }
+        
+        goatAnimationId = requestAnimationFrame(animateGoats);
+        
+        // Start showing random goat messages every 3-5 seconds
+        function showRandomGoatMessage() {
+          if (!activeEffects.has('goat')) {
+            clearInterval(goatMessageInterval);
+            return;
+          }
+          
+          const message = goatMessages[Math.floor(Math.random() * goatMessages.length)];
+          showGoatMessage(message);
+        }
+        
+        // Show first message after 2 seconds
+        setTimeout(showRandomGoatMessage, 2000);
+        
+        // Then show messages every 3-5 seconds
+        goatMessageInterval = setInterval(() => {
+          showRandomGoatMessage();
+        }, 3000 + Math.random() * 2000);
+      }
+    }
+    
+    // ==========================================
+    // VISUAL EFFECTS
+    // ==========================================
+    
+    // Fireworks effect
+    function triggerFireworks() {
+      showNotification('🎆 FIREWORKS! 🎆');
+      
+      // Create firework particles
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => createFirework(), i * 300);
+      }
+    }
+    
+    function createFirework() {
+      const firework = document.createElement('div');
+      firework.style.cssText = `
+        position: absolute;
+        width: 4px;
+        height: 4px;
+        background: white;
+        border-radius: 50%;
+        left: ${Math.random() * window.innerWidth}px;
+        top: ${window.innerHeight}px;
+        transition: all 1s ease-out;
+      `;
+      document.body.appendChild(firework);
+      
+      // Launch
+      setTimeout(() => {
+        firework.style.top = `${Math.random() * window.innerHeight * 0.5}px`;
+      }, 10);
+      
+      // Explode
+      setTimeout(() => {
+        for (let j = 0; j < 20; j++) {
+          const particle = document.createElement('div');
+          const angle = (j / 20) * Math.PI * 2;
+          const velocity = 100 + Math.random() * 100;
+          const color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+          
+          particle.style.cssText = `
+            position: absolute;
+            width: 3px;
+            height: 3px;
+            background: ${color};
+            border-radius: 50%;
+            left: ${parseFloat(firework.style.left)}px;
+            top: ${parseFloat(firework.style.top)}px;
+            transition: all 1s ease-out;
+            opacity: 1;
+          `;
+          document.body.appendChild(particle);
+          
+          setTimeout(() => {
+            particle.style.transform = `translate(${Math.cos(angle) * velocity}px, ${Math.sin(angle) * velocity}px)`;
+            particle.style.opacity = '0';
+          }, 10);
+          
+          setTimeout(() => particle.remove(), 1100);
+        }
+        firework.remove();
+      }, 1000);
+    }
+    
+    // ==========================================
+    // UI OVERLAYS AND NOTIFICATIONS
+    // ==========================================
+    
+    // Instructions overlay
+    function toggleInstructions() {
+      let instructions = document.querySelector('.instructions');
+      if (instructions) {
+        instructions.remove();
+        return;
+      }
+      
+      instructions = document.createElement('div');
+      instructions.className = 'instructions';
+      instructions.innerHTML = `
+        <h3>🎨 Keyboard Controls</h3>
+        <div class="instruction-list">
+          <div><kbd>0-9</kbd> Color Palettes</div>
+          <div><kbd>D</kbd> Dad Mode</div>
+          <div><kbd>F</kbd> Fireworks 🎆</div>
+          <div><kbd>J</kbd> Julia Oscillation</div>
+          <div><kbd>S</kbd> 🐐 GOAT MODE 🐐</div>
+          <div><kbd>P</kbd> Phase Coloring</div>
+          <div><kbd>L</kbd> Lissajous Curves</div>
+          <div><kbd>V</kbd> Voronoi Tessellation</div>
+          <div><kbd>Z</kbd> Zoom Pulse</div>
+          <div><kbd>M</kbd> Kaleidoscope</div>
+          <div><kbd>T</kbd> Time Warp</div>
+          <div><kbd>I</kbd> Toggle Instructions</div>
+        </div>
+        <div class="close-hint">Click anywhere or press <kbd>I</kbd> to close</div>
+        <div class="close-hint" style="margin-top: 10px;">🖱️ Click for random colors</div>
+      `;
+      instructions.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        font-family: 'BioRhyme', serif;
+        font-weight: 400;
+        z-index: 1000;
+        max-width: 400px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
+      `;
+      
+      // Click anywhere to close
+      function closeInstructions(e) {
+        // Don't trigger palette change when closing instructions
+        e.stopPropagation();
+        instructions.remove();
+        window.removeEventListener('click', closeInstructions);
+      }
+      
+      // Add click listener to window with a small delay to avoid immediate closing
+      setTimeout(() => {
+        window.addEventListener('click', closeInstructions);
+      }, 100);
+      
+      // Prevent clicks on the instructions box from propagating
+      instructions.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      
+      // Add styles for the instruction content
+      const style = document.createElement('style');
+      style.textContent = `
+        .instructions h3 {
+          margin: 0 0 20px 0;
+          text-align: center;
+          font-size: 24px;
+          font-family: 'BioRhyme', serif;
+          font-weight: 700;
+        }
+        .instruction-list {
+          display: grid;
+          gap: 10px;
+        }
+        .instruction-list div {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 5px 0;
+        }
+        .instruction-list kbd {
+          background: #333;
+          padding: 3px 8px;
+          border-radius: 3px;
+          font-family: monospace;
+          font-size: 14px;
+          border: 1px solid #555;
+        }
+        .close-hint {
+          margin-top: 20px;
+          text-align: center;
+          opacity: 0.7;
+          font-size: 14px;
+        }
+      `;
+      document.head.appendChild(style);
+      document.body.appendChild(instructions);
+    }
+    
+    // Generic notification helper
+    function showNotification(text) {
+      // Remove any existing notification
+      const existing = document.querySelector('.effect-notification');
+      if (existing) existing.remove();
+      
+      const notification = document.createElement('div');
+      notification.className = 'effect-notification';
+      notification.textContent = text;
+      notification.style.cssText = `
+        position: fixed;
+        top: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.85);
+        color: #000;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-family: 'BioRhyme', serif;
+        font-weight: 700;
+        font-size: 20px;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        z-index: 999;
+        pointer-events: none;
+        text-align: center;
+        max-width: 80%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      `;
+      document.body.appendChild(notification);
+      
+      // Fade in
+      setTimeout(() => {
+        notification.style.opacity = '1';
+      }, 10);
+      
+      // Fade out
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+      }, 2000);
+    }
+    
+    // Special goat message notification
+    function showGoatMessage(text) {
+      // Remove any existing goat message
+      const existing = document.querySelector('.goat-message');
+      if (existing) existing.remove();
+      
+      const notification = document.createElement('div');
+      notification.className = 'goat-message';
+      notification.innerHTML = `🐐 <i>"${text}"</i> 🐐`;
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.85);
+        color: #fff;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-family: 'BioRhyme', serif;
+        font-weight: 400;
+        font-size: 18px;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        z-index: 999;
+        pointer-events: none;
+        text-align: center;
+        max-width: 80%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      `;
+      document.body.appendChild(notification);
+      
+      // Fade in
+      setTimeout(() => {
+        notification.style.opacity = '1';
+      }, 10);
+      
+      // Fade out after 3.5 seconds
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+      }, 3500);
+    }
+
+    // show palette notification
+    function showPaletteNotification(num) {
+      const palettes = [
+        '0: Ocean/Sky',
+        '1: Sunset/Fire', 
+        '2: Forest/Nature',
+        '3: Purple/Magenta',
+        '4: Gold/Bronze',
+        '5: Arctic/Ice',
+        '6: Rainbow',
+        '7: Monochrome',
+        '8: Neon/Electric',
+        '9: Autumn/Harvest'
+      ];
+      
+      // remove existing notification if any
+      const existing = document.querySelector('.palette-notification');
+      if (existing) existing.remove();
+      
+      const notification = document.createElement('div');
+      notification.className = 'palette-notification';
+      notification.textContent = `Palette ${palettes[num]}`;
+      notification.style.cssText = `
+        position: fixed;
+        top: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.85);
+        color: #000;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-family: 'BioRhyme', serif;
+        font-weight: 700;
+        font-size: 20px;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        z-index: 999;
+        pointer-events: none;
+        text-align: center;
+        max-width: 80%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      `;
+      document.body.appendChild(notification);
+      
+      // Fade in
+      setTimeout(() => {
+        notification.style.opacity = '1';
+      }, 10);
+      
+      // Fade out
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+      }, 2000);
+    }
+
+    // ==========================================
+    // MAIN ANIMATION LOOP
+    // ==========================================
+    
+    // animation loop
+    let start = performance.now();
+    
+    function animate() {
+      // Update time uniform for shader animations
+      // Time in seconds for smooth, continuous motion
+      uniforms.uTime.value = (performance.now() - start) * 0.001;
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
+    
+    // Show instructions on load
+    setTimeout(() => {
+      showNotification('Press I for instructions');
+    }, 1000);
+  </script>
+</body>
+</html>
